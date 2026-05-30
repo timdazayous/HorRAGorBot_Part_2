@@ -25,6 +25,7 @@ from app.models.schema import MovieGold
 
 from app.services.tmdb_api import TMDBService
 from app.services.kaggle_service import KaggleService
+from app.services.spark_kaggle_service import SparkKaggleService
 from app.services.imdb_service import IMDBService
 from app.services.db_service import save_movies_to_db
 
@@ -226,13 +227,27 @@ def enrich_with_rt(master: List[MovieGold], max_movies: int = 50, delay: float =
 
 def enrich_with_kaggle(master: List[MovieGold]) -> None:
     """
-    Enrichit IN-PLACE les films avec le dataset Kaggle horror_movies.csv.
+    Enrichit IN-PLACE les films avec le dataset Kaggle.
     Comble principalement les synopsis (overview) manquants dans TMDB.
     Utilise les 3 niveaux de matching MDM pour trouver les correspondances.
+
+    Ordre de priorité pour la lecture Kaggle :
+      1. SparkKaggleService : lit les fichiers splittés en parallèle via PySpark
+         (nécessite d'avoir exécuté create_kaggle_splits.py au préalable)
+      2. KaggleService : lit horror_movies.csv en fichier unique via Polars
+         (fallback si les splits n'existent pas)
     """
     logger.info("=== ENRICHISSEMENT 2 : KAGGLE ===")
-    kaggle = KaggleService()
-    kaggle_movies = kaggle.get_all_movies()
+
+    # Priorité 1 : fichiers splittés → PySpark (comportement Big Data attendu)
+    spark_svc = SparkKaggleService()
+    if spark_svc.is_available():
+        kaggle_movies = spark_svc.get_all_movies()
+    else:
+        # Priorité 2 : fichier unique → Polars (fallback si splits absents)
+        logger.info("  Splits absents — fallback KaggleService (fichier unique)")
+        kaggle_movies = KaggleService().get_all_movies()
+
     by_tmdb, by_imdb = _build_indexes(kaggle_movies)
 
     enriched = 0

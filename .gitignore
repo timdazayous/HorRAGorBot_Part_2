@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Variables d'environnement (secrets)
+.env
+.env.local
+.env.*.local
+
+# Données volumineuses
+data/input/*.tsv
+data/input/*.db
+data/input/*.csv

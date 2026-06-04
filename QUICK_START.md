@@ -1,92 +1,60 @@
-# 🚀 HorRAGor BOT - Quick Start avec Grok
+🚀 HorRAGor BOT - Quick Start avec Groq
+⚡ Démarrage rapide en 5 minutes
+Step 1: Obtenir une clé API Groq
+Allez sur : https://console.groq.com/
+Connectez-vous / créez un compte
+Accédez à API Keys
+Cliquez sur Create New API Key
+Copiez la clé (commence généralement par gsk_...)
+Step 2: Configurer .env
 
-## ⚡ Démarrage rapide en 5 minutes
+Ouvrez le fichier .env et remplacez :
 
-### Step 1: Obtenir une clé API Grok
+GROQ_API_KEY=your_groq_api_key_here
 
-1. Allez sur: **https://console.x.ai/**
-2. Connexion / Création de compte
-3. Allez dans **API Keys** 
-4. Cliquez sur **Create New API Key**
-5. Copiez la clé (commence par `sk_...`)
+Par votre vraie clé :
 
-### Step 2: Configurer .env
-
-Ouvrez le fichier `.env` et remplacez:
-
-```env
-XAI_API_KEY=your_xai_api_key_here
-```
-
-Par votre vraie clé:
-
-```env
-XAI_API_KEY=sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-### Step 3: Installer les dépendances
-
-```bash
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Step 3: Installer les dépendances
 pip install -r requirements.txt
-```
-
-### Step 4: Tester la configuration Grok
-
-```bash
-python test_grok_config.py
-```
-
-Vous devriez voir:
-```
-✅ Configuration
+Step 4: Tester la configuration Groq
+python test_groq_config.py
+Vous devriez voir :
+✅ Configuration Groq
 ✅ Import du module
-✅ Client Grok
+✅ Client Groq
 ✅ Génération de réponse
-```
-
-### Step 5: Lancer l'API
-
-**Terminal 1 - API FastAPI:**
-```bash
+Step 5: Lancer l’API
+🖥️ Terminal 1 - FastAPI
 python main.py
-```
 
-Allez sur: http://localhost:8000/docs pour voir la documentation Swagger
+👉 Documentation Swagger :
+http://localhost:8000/docs
 
-**Terminal 2 - Interface Streamlit:**
-```bash
+🎨 Terminal 2 - Streamlit
 streamlit run streamlit_app.py
-```
 
-Allez sur: http://localhost:8501
+👉 Interface :
+http://localhost:8501
 
-## 🧪 Tester l'API avec curl
-
-```bash
+🧪 Tester l’API avec curl
 curl -X POST "http://localhost:8000/chat" \
   -H "Content-Type: application/json" \
   -d '{
     "question": "Recommande-moi un film d'\''horreur comme The Shining"
   }'
-```
-
-Réponse attendue:
-```json
+Réponse attendue :
 {
-  "answer": "[Réponse générée par Grok...]",
-  "tools_used": ["grok-llm"],
+  "answer": "[Réponse générée par Groq...]",
+  "tools_used": ["groq-llm"],
   "judge_verdict": {
     "is_valid": true,
     "confidence": 0.95,
-    "reasoning": "Réponse générée par Grok et validée..."
+    "reasoning": "Réponse générée par Groq et validée..."
   },
   "conversation_id": "conv_default"
 }
-```
-
-## 📝 Architecture
-
-```
+📝 Architecture
 ┌─────────────────┐
 │   Streamlit     │
 │  (Front-End)    │
@@ -102,99 +70,76 @@ Réponse attendue:
          │ generate_response()
          ↓
 ┌─────────────────┐
-│  Grok (xAI)     │
-│    LLM          │
+│   Groq LLM      │
+│ (Llama / Mixtral│
 └─────────────────┘
-```
-
-## 🔑 Fichiers clés
-
-| Fichier | Rôle |
-|---------|------|
-| `main.py` | API FastAPI avec endpoint `/chat` |
-| `llm_grok.py` | Client Grok asynchrone |
-| `streamlit_app.py` | Interface utilisateur |
-| `.env` | Configuration (clé API) |
-| `requirements.txt` | Dépendances |
-
-## 📚 Endpoints disponibles
-
-### 1. `/health` (GET)
-Vérifie que l'API fonctionne
-
-```bash
+🔑 Fichiers clés
+Fichier	Rôle
+main.py	API FastAPI avec endpoint /chat
+llm_groq.py	Client Groq asynchrone
+streamlit_app.py	Interface utilisateur
+.env	Configuration (GROQ_API_KEY)
+requirements.txt	Dépendances
+📚 Endpoints disponibles
+1. /health (GET)
 curl http://localhost:8000/health
-```
-
-### 2. `/chat` (POST)
-Envoie une question et reçoit une réponse de Grok
-
-```bash
+2. /chat (POST)
 curl -X POST "http://localhost:8000/chat" \
   -H "Content-Type: application/json" \
   -d '{"question": "Ta question ici"}'
-```
-
-### 3. `/info` (GET)
-Infos sur les modèles et outils
-
-```bash
+3. /info (GET)
 curl http://localhost:8000/info
-```
+4. /docs (Swagger UI)
 
-### 4. `/docs` (GET)
-Documentation Swagger interactive
+👉 http://localhost:8000/docs
 
-```
-http://localhost:8000/docs
-```
+⚙️ Configuration avancée
 
-## ⚙️ Configuration avancée
+Éditer .env :
 
-Éditer les variables d'environnement dans `.env`:
+# Modèle Groq
+LLM_MODEL=llama-3.3-70b-versatile
 
-```env
-# Modèle Grok (grok-2, grok-beta)
-LLM_MODEL=grok-2
-
-# Température (0 = déterministe, 1 = créatif)
+# Température (0 = précis, 1 = créatif)
 LLM_TEMPERATURE=0.7
 
-# Nombre max de tokens par réponse
+# Max tokens
 LLM_MAX_TOKENS=2048
 
-# Host/Port de l'API
+# API server
 API_HOST=0.0.0.0
 API_PORT=8000
-```
+🐛 Dépannage
+❌ "GROQ_API_KEY not configured"
 
-## 🐛 Dépannage
+→ Vérifie ton fichier .env
 
-### Erreur: "XAI_API_KEY not configured"
-→ Assurez-vous que le fichier `.env` existe et que la clé est configurée
+❌ "Connection refused"
 
-### Erreur: "Connection refused"
-→ Vérifiez que l'API est lancée: `python main.py`
+→ Lance l’API :
 
-### Erreur: "Module not found"
-→ Installez les dépendances: `pip install -r requirements.txt`
+python main.py
+❌ "Module not found"
+pip install -r requirements.txt
+❌ Streamlit ne répond pas
 
-### Streamlit ne trouve pas l'API
-→ Vérifiez que `API_URL = "http://localhost:8000"` dans `streamlit_app.py`
+Vérifie dans streamlit_app.py :
 
-## 📖 Documentation
+API_URL = "http://localhost:8000"
+📖 Documentation
+https://console.groq.com/
+https://docs.groq.com/
+https://fastapi.tiangolo.com/
+https://docs.streamlit.io/
+💡 Prochaines étapes
+Ajouter RAG (FAISS / embeddings)
+Ajouter mémoire conversationnelle
+Intégrer LangGraph
+Connecter Supabase
+Ajouter cache des réponses Groq
+👻 HorRAGor BOT est prêt
 
-- **API xAI**: https://docs.x.ai/
-- **FastAPI**: https://fastapi.tiangolo.com/
-- **Streamlit**: https://docs.streamlit.io/
-
-## 💡 Prochaines étapes
-
-1. Ajouter les autres outils (query_movie_metadata, find_similar_horror_movies, etc.)
-2. Connecter Supabase
-3. Implémenter LangGraph pour les workflows avancés
-4. Ajouter FAISS pour l'indexation locale
-
----
-
-**Enjoy HorRAGor BOT! 👻** 🎬🎮📖
+✔ Backend FastAPI
+✔ LLM Groq connecté
+✔ Frontend Streamlit
+✔ Architecture scalable

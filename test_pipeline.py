@@ -161,7 +161,7 @@ def test_fusion(tmdb_movies, kaggle_movies):
         return []
 
     try:
-        from main import merge_movies
+        from main_api import merge_movies
         merged = merge_movies([tmdb_movies, kaggle_movies])
         print(f"✅ Fusion : {len(tmdb_movies)} TMDB + {len(kaggle_movies)} Kaggle → {len(merged)} uniques")
 

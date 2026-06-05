@@ -5,13 +5,15 @@ Composant Back-End : réception des messages Streamlit et traitement via l'agent
 Intégration avec Groq API
 """
 
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from llm_groq import GroqLLM, get_groq_client
-from pydantic import BaseModel, Field
+from llm_groq import GroqLLM, get_groq_client, initialize_retriever
+from pydantic import BaseModel, ConfigDict, Field
 
 # ============================================================================
 # CONFIGURATION
@@ -56,10 +58,18 @@ def get_groq() -> GroqLLM:
 # APPLICATION FASTAPI
 # ============================================================================
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await asyncio.to_thread(initialize_retriever)
+    logger.info("Retriever FAISS pré-chargé au démarrage")
+    yield
+
+
 app = FastAPI(
     title="HorRAGor BOT API",
     description="Agent conversationnel spécialisé dans l'univers de l'horreur",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # ============================================================================
@@ -71,6 +81,16 @@ class ChatRequest(BaseModel):
     """
     Requête utilisateur.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "question": "Quel film d'horreur me recommandes-tu si j'aime The Shining ?",
+                "user_id": "user_123",
+                "conversation_id": "conv_456"
+            }
+        }
+    )
 
     question: str = Field(
         ...,
@@ -88,15 +108,6 @@ class ChatRequest(BaseModel):
         default=None,
         description="Identifiant conversation"
     )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "question": "Quel film d'horreur me recommandes-tu si j'aime The Shining ?",
-                "user_id": "user_123",
-                "conversation_id": "conv_456"
-            }
-        }
 
 
 class ToolResult(BaseModel):
@@ -141,8 +152,8 @@ class ChatResponse(BaseModel):
 
     conversation_id: str
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "answer": "Je te recommande The Haunting (1963).",
                 "tools_used": ["groq-llm"],
@@ -154,6 +165,7 @@ class ChatResponse(BaseModel):
                 "conversation_id": "conv_456"
             }
         }
+    )
 
 
 class ErrorResponse(BaseModel):
@@ -240,12 +252,11 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 )
             )
 
-        answer = await groq.generate_response(
-            user_question=request.question
-        )
+        result = await groq.generate_response(user_question=request.question)
 
         logger.info(
-            f"Réponse générée ({len(answer)} caractères)"
+            f"Réponse générée ({len(result.answer)} caractères) "
+            f"— outils : {result.tools_used}"
         )
 
         conversation_id = (
@@ -254,15 +265,12 @@ async def chat(request: ChatRequest) -> ChatResponse:
         )
 
         return ChatResponse(
-            answer=answer,
-            tools_used=["groq-llm"],
+            answer=result.answer,
+            tools_used=result.tools_used,
             judge_verdict=JudgeVerdict(
                 is_valid=True,
                 confidence=0.95,
-                reasoning=(
-                    "Réponse générée par Groq "
-                    "et validée par le système."
-                )
+                reasoning="Réponse générée par Groq et validée par le système."
             ),
             conversation_id=conversation_id
         )

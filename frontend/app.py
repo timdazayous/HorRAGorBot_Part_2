@@ -334,6 +334,27 @@ def _inject_background() -> None:
   setTimeout(styleBottom, 350);
   setTimeout(styleBottom, 1000);
   par.addEventListener('resize', styleBottom);
+
+  // ── Assistant chat bubble styling (MutationObserver) ──────────────────
+  function styleAssistantBubbles() {{
+    doc.querySelectorAll('[data-testid="stChatMessage"]').forEach(function(msg) {{
+      if (msg.getAttribute('data-hg-styled')) return;
+      var isAssistant =
+        msg.querySelector('[data-testid="chatAvatarIcon-assistant"]') ||
+        msg.querySelector('img[alt="assistant"]') ||
+        msg.querySelector('[aria-label*="assistant"]');
+      if (isAssistant) {{
+        msg.style.setProperty('background',    'rgba(65, 10, 30, 0.32)',          'important');
+        msg.style.setProperty('border-radius', '12px',                            'important');
+        msg.style.setProperty('border',        'none', 'important');
+        msg.style.setProperty('padding',       '8px 12px',                        'important');
+        msg.setAttribute('data-hg-styled', '1');
+      }}
+    }});
+  }}
+  styleAssistantBubbles();
+  var chatObserver = new MutationObserver(styleAssistantBubbles);
+  chatObserver.observe(doc.body, {{ childList: true, subtree: true }});
 }})();
 </script>
 """, height=0)

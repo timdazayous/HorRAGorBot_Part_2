@@ -264,14 +264,18 @@ async def chat(request: ChatRequest) -> ChatResponse:
             or f"conv_{request.user_id or 'anonymous'}"
         )
 
+        verdict = None
+        if result.judge_verdict:
+            verdict = JudgeVerdict(
+                is_valid=result.judge_verdict.get("is_valid", True),
+                confidence=result.judge_verdict.get("confidence", 0.75),
+                reasoning=result.judge_verdict.get("reasoning", "")
+            )
+
         return ChatResponse(
             answer=result.answer,
             tools_used=result.tools_used,
-            judge_verdict=JudgeVerdict(
-                is_valid=True,
-                confidence=0.95,
-                reasoning="Réponse générée par Groq et validée par le système."
-            ),
+            judge_verdict=verdict,
             conversation_id=conversation_id
         )
 

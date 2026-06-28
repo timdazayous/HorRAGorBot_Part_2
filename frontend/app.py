@@ -217,13 +217,13 @@ def _inject_background() -> None:
   // ── Moon (behind castle in DOM) ───────────────────────────────────────
   var moonEl = doc.createElement('div');
   moonEl.innerHTML = `{moon}`;
-  moonEl.style.cssText = 'position:absolute;bottom:310px;right:470px;opacity:0.90;';
+  moonEl.style.cssText = 'position:absolute;bottom:410px;right:470px;opacity:0.90;';
   bg.appendChild(moonEl);
 
   // ── Castle ────────────────────────────────────────────────────────────
   var castleEl = doc.createElement('div');
   castleEl.innerHTML = `{castle}`;
-  castleEl.style.cssText = 'position:absolute;bottom:55px;right:1%;filter:drop-shadow(0 0 22px rgba(120,30,10,0.55));';
+  castleEl.style.cssText = 'position:absolute;bottom:90px;right:1%;filter:drop-shadow(0 0 22px rgba(120,30,10,0.55));';
   bg.appendChild(castleEl);
 
   // ── Hills ─────────────────────────────────────────────────────────────
@@ -408,12 +408,12 @@ def _inject_background() -> None:
 
   // ── Castle platforms (static ledges derived from SVG geometry) ────────
   // Castle: viewBox 400×310 → rendered 520×403 → scale 1.3
-  // CSS:    bottom:55px  right:1%
+  // CSS:    bottom:90px  right:1%
   // castleX0 = left edge of castle (recalculated on resize)
   var CASTLE_SCALE = 403 / 310; // = 1.3
   var CASTLE_H     = 403;
   var CASTLE_W     = 520;
-  var CASTLE_BOT   = 55; // CSS bottom in px
+  var CASTLE_BOT   = 90; // CSS bottom in px
   // SVG geometry: [cx, half-width, top-surface y]
   var _cpSVG = [
     [200, 82,  116], // main keep battlements
@@ -437,14 +437,14 @@ def _inject_background() -> None:
   par.addEventListener('resize', function() {{ castlePlatforms = _makeCastle(); }});
 
   // ── Moon orbital constants ─────────────────────────────────────────────
-  // Moon CSS: bottom:310px right:470px  — SVG 180×180 (viewBox 200×200)
+  // Moon CSS: bottom:410px right:470px  — SVG 180×180 (viewBox 200×200)
   // Moon surface circle: r=52 in SVG → r=52*(180/200)=46.8 rendered
   var MOON_R = 50; // orbit radius (zombie feet on moon surface)
   var moonCx = par.innerWidth  - 560; // center X from viewport left (right:470 + 90)
-  var moonCy = par.innerHeight - 400; // center Y from viewport top  (bottom:310 + 90)
+  var moonCy = par.innerHeight - 500; // center Y from viewport top  (bottom:410 + 90)
   par.addEventListener('resize', function() {{
     moonCx = par.innerWidth  - 560;
-    moonCy = par.innerHeight - 400;
+    moonCy = par.innerHeight - 500;
   }});
 
   // ── Animation loop ────────────────────────────────────────────────────

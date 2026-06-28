@@ -82,8 +82,8 @@ def _fetch_films_from_db(film_ids: list[int]) -> list[dict]:
         conn.close()
         return [dict(r) for r in rows]
     except Exception as e:
-        logger.error(f"Erreur Supabase : {e}")
-        return []
+        logger.error(f"Erreur Supabase (DB pausée ou inaccessible) : {e}")
+        raise RuntimeError(f"Supabase inaccessible : {e}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +132,10 @@ def _search_horror_movies(query: str, k: int = 5) -> str:
     _, indices = index.search(vec, k)
 
     film_ids = [int(id_map[i]) for i in indices[0] if i < len(id_map)]
-    films    = _fetch_films_from_db(film_ids)
+    try:
+        films = _fetch_films_from_db(film_ids)
+    except RuntimeError as e:
+        return f"[ERREUR BASE DE DONNÉES] {e} — informe l'utilisateur que la base est temporairement inaccessible."
 
     if not films:
         return "Aucun film trouvé dans la base de données."

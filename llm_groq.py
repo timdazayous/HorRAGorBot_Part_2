@@ -16,7 +16,7 @@ import faiss
 import numpy as np
 import psycopg2
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError
 from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel, Field
 from sentence_transformers import SentenceTransformer
@@ -101,10 +101,9 @@ TOOLS = [
             "name": "search_horror_movies",
             "description": (
                 "Recherche sémantique dans la base de 1179 films d'horreur. "
-                "TOUJOURS utiliser pour toute demande de recommandation ou suggestion de film, "
-                "même générale : 'quel film me conseilles-tu', 'un bon film d'horreur', "
-                "'recommande-moi quelque chose', 'films avec des fantômes/zombies/etc.'. "
-                "Ne jamais répondre à une recommandation sans appeler cet outil."
+                "À utiliser pour toute demande de recommandation ou suggestion de film : "
+                "'quel film me conseilles-tu', 'un bon film d'horreur', "
+                "'recommande-moi quelque chose', 'films avec des fantômes', etc."
             ),
             "parameters": {
                 "type": "object",
@@ -182,34 +181,28 @@ class LLMResult:
 # ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = (
-    "Tu es HorRAGor, un agent conversationnel spécialisé dans l'univers de l'horreur "
+    "Tu es HorRAGor, un agent conversationnel spécialisé dans l'horreur "
     "(cinéma, littérature, jeux vidéo). "
-    "Tu possèdes une base de données de 1179 films d'horreur que tu DOIS interroger "
-    "pour toute question de recommandation.\n\n"
-    "RÈGLES D'UTILISATION DES OUTILS :\n"
-    "- search_horror_movies : OBLIGATOIRE pour TOUTE demande de recommandation, suggestion ou "
-    "conseil de film, même général (ex: 'quel film me conseilles-tu', 'recommande-moi un film', "
-    "'un bon film d'horreur', 'un film d'horreur psychologique', 'films avec des zombies'). "
-    "Ne réponds JAMAIS à une recommandation depuis ta mémoire propre — utilise TOUJOURS cet outil.\n"
-    "- query_movie_metadata : OBLIGATOIRE quand l'utilisateur cite un titre précis "
-    "(ex: 'parle-moi de Shining', 'infos sur Hereditary'). "
-    "Retourne les métadonnées réelles : année, genres, notes TMDB/IMDB/RT, synopsis.\n"
-    "- similar_movies : quand l'utilisateur demande des films similaires à un titre précis "
-    "(ex: 'films similaires à X', 'dans le style de X').\n"
-    "- detailed_synopsis : UNIQUEMENT si l'utilisateur demande des détails approfondis "
-    "absents de la base : anecdotes, tournage, contexte de production, ou 'dis-m'en plus'.\n"
-    "- movie_age : quand l'utilisateur demande l'âge d'un film ou depuis combien de temps il est sorti.\n\n"
-    "INTERDIT : Suggérer des films depuis ta mémoire interne sans avoir appelé un outil. "
-    "Exception : questions purement informatives sans recommandation (histoire du genre, définitions).\n\n"
-    "IMPORTANT — Format de réponse quand tu utilises query_movie_metadata :\n"
-    "Commence TOUJOURS par afficher les données brutes de la base sans gras ni titre markdown, "
-    "sur des lignes séparées avec ce modèle :\n"
+    "Tu as accès à une base de données de 1179 films d'horreur via plusieurs outils.\n\n"
+    "Utilise les outils de cette façon :\n"
+    "- search_horror_movies : pour toute recommandation ou suggestion de film "
+    "(ex: 'quel film me conseilles-tu', 'un bon film d'horreur', 'films avec des fantômes'). "
+    "Appelle cet outil plutôt que de répondre depuis ta mémoire.\n"
+    "- query_movie_metadata : quand l'utilisateur cite un titre précis "
+    "(ex: 'parle-moi de Shining'). Retourne année, genres, notes TMDB/IMDB/RT, synopsis.\n"
+    "- similar_movies : pour trouver des films similaires à un titre précis.\n"
+    "- detailed_synopsis : pour des détails approfondis non disponibles en base "
+    "(anecdotes, tournage, contexte). Utilise seulement si explicitement demandé.\n"
+    "- movie_age : quand l'utilisateur demande l'âge d'un film.\n\n"
+    "Pour les questions générales sans recommandation (histoire du genre, définitions), "
+    "réponds directement.\n\n"
+    "Format pour query_movie_metadata :\n"
     "🎬 [Titre] — [Année]\n"
     "Genres  : [genres]\n"
     "Notes   : [notes]\n"
     "Synopsis: [synopsis]\n"
     "--------\n"
-    "Puis écris ton commentaire en dessous de la ligne de tirets, en texte normal."
+    "[commentaire en texte normal]"
 )
 
 
@@ -296,14 +289,34 @@ class GroqLLM:
         logger.info(f"Appel Groq : {user_question[:60]}...")
 
         # Premier appel — avec l'outil disponible
-        response = await self.client.chat.completions.create(
-            model=self.config.model,
-            messages=messages,
-            tools=TOOLS,
-            tool_choice="auto",
-            temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens
-        )
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.config.model,
+                messages=messages,
+                tools=TOOLS,
+                tool_choice="auto",
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens
+            )
+        except BadRequestError as e:
+            if getattr(e, "code", None) == "tool_use_failed" or "tool_use_failed" in str(e):
+                logger.warning(f"tool_use_failed — fallback direct search_horror_movies : {e}")
+                context    = await asyncio.to_thread(_search_horror_movies, user_question, 5)
+                tools_used = ["search_horror_movies", "groq-llm"]
+                fallback_messages = [
+                    *messages,
+                    {"role": "user", "content": f"Résultats de la base de données :\n{context}\n\nRéponds à la question initiale en te basant sur ces résultats."}
+                ]
+                fb_resp = await self.client.chat.completions.create(
+                    model=self.config.model,
+                    messages=fallback_messages,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens
+                )
+                answer  = fb_resp.choices[0].message.content
+                verdict = await self._judge_response(user_question, answer, tools_used)
+                return LLMResult(answer=answer, tools_used=tools_used, judge_verdict=verdict)
+            raise
 
         choice     = response.choices[0]
         tools_used = ["groq-llm"]

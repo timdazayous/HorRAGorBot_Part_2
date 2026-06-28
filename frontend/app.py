@@ -217,22 +217,96 @@ def _inject_background() -> None:
   hillsEl.style.cssText = 'position:absolute;bottom:0;left:0;right:0;';
   bg.appendChild(hillsEl);
 
-  // ── Zombies (along the horizon) ───────────────────────────────────────
-  var zombies = [];
+  // ── Zombie interactive overlay (above UI, pointer-events passthrough) ───
+  var zombieOverlay = doc.createElement('div');
+  zombieOverlay.id = 'hg-zombie-layer';
+  zombieOverlay.style.cssText = 'position:fixed;inset:0;z-index:50;pointer-events:none;overflow:visible;';
+  doc.body.appendChild(zombieOverlay);
+
+  // ── Zombies ────────────────────────────────────────────────────────────
+  var GRAVITY   = 0.25;
+  var dragState = {{ zombie: null, offsetX: 0, offsetY: 0, history: [] }};
+  var zombies   = [];
   for (var i = 0; i < 8; i++) {{
     var zd = doc.createElement('div');
     zd.innerHTML = `{zombie}`;
-    zd.style.cssText = 'position:absolute;pointer-events:none;';
-    bg.appendChild(zd);
+    zd.style.cssText = 'position:absolute;pointer-events:auto;cursor:grab;user-select:none;';
+    zombieOverlay.appendChild(zd);
     zombies.push({{
-      el:         zd,
-      x:          Math.random() * par.innerWidth,
-      baseBottom: 86 + Math.random() * 22,
-      vx:         (0.06 + Math.random() * 0.16) * (Math.random() > 0.5 ? 1 : -1),
-      phase:      Math.random() * Math.PI * 2,
-      scale:      0.72 + Math.random() * 0.50
+      el:          zd,
+      x:           Math.random() * par.innerWidth,
+      baseBottom:  86 + Math.random() * 22,
+      vx:          (0.06 + Math.random() * 0.16) * (Math.random() > 0.5 ? 1 : -1),
+      phase:       Math.random() * Math.PI * 2,
+      scale:       0.72 + Math.random() * 0.50,
+      thrown:      false,
+      dragging:    false,
+      throwHeight: 0,
+      vy:          0
     }});
   }}
+
+  // ── Drag & throw handlers ─────────────────────────────────────────────
+  zombies.forEach(function(z) {{
+    z.el.addEventListener('mousedown', function(e) {{
+      e.preventDefault();
+      e.stopPropagation();
+      dragState.zombie  = z;
+      dragState.offsetX = e.clientX - z.x;
+      dragState.offsetY = (par.innerHeight - e.clientY) - (z.baseBottom + z.throwHeight);
+      dragState.history = [{{ x: e.clientX, y: e.clientY, t: Date.now() }}];
+      z.dragging    = true;
+      z.thrown      = false;
+      z.throwHeight = 0;
+      z.el.style.cursor = 'grabbing';
+      z.el.style.zIndex = '200';
+      doc.body.style.userSelect = 'none';
+    }});
+  }});
+
+  doc.addEventListener('mousemove', function(e) {{
+    if (!dragState.zombie) return;
+    var z = dragState.zombie;
+    z.x = e.clientX - dragState.offsetX;
+    z.baseBottom = Math.max(10, Math.min(
+      par.innerHeight * 0.85,
+      (par.innerHeight - e.clientY) - dragState.offsetY
+    ));
+    dragState.history.push({{ x: e.clientX, y: e.clientY, t: Date.now() }});
+    if (dragState.history.length > 8) dragState.history.shift();
+  }});
+
+  function releaseDrag(withThrow) {{
+    if (!dragState.zombie) return;
+    var z    = dragState.zombie;
+    var hist = dragState.history;
+    var vx = 0, vy = 0;
+    if (withThrow && hist.length >= 2) {{
+      var dt = Math.max(hist[hist.length - 1].t - hist[0].t, 16);
+      vx = (hist[hist.length - 1].x - hist[0].x) / dt * 16;
+      vy = -(hist[hist.length - 1].y - hist[0].y) / dt * 16;
+    }}
+    z.vx = Math.max(-8, Math.min(8, vx));
+    if (Math.abs(z.vx) < 0.05) z.vx = 0.08 * (Math.random() > 0.5 ? 1 : -1);
+    if (vy > 0.5) {{
+      z.vy          = Math.min(14, vy);
+      z.thrown      = true;
+      z.throwHeight = 0;
+    }} else {{
+      z.thrown      = false;
+      z.throwHeight = 0;
+      var dir = z.vx >= 0 ? 1 : -1;
+      z.vx = dir * (0.06 + Math.random() * 0.10);
+    }}
+    z.dragging = false;
+    dragState.zombie = null;
+    z.el.style.cursor = 'grab';
+    z.el.style.zIndex = '';
+    doc.body.style.userSelect = '';
+  }}
+
+  doc.addEventListener('mouseup',    function() {{ releaseDrag(true);  }});
+  doc.addEventListener('mouseleave', function() {{ releaseDrag(false); }});
 
   // ── Fog layers ────────────────────────────────────────────────────────
   [
@@ -282,9 +356,48 @@ def _inject_background() -> None:
     }});
 
     // Zombies
+    var W = par.innerWidth;
     zombies.forEach(function(z) {{
+      var lL = z.el.querySelector('.z-leg-l');
+      var lR = z.el.querySelector('.z-leg-r');
+
+      if (z.dragging) {{
+        // Held — flail legs rapidly
+        var la = Math.sin(t * 14 + z.phase) * 50;
+        var flip = z.vx >= 0 ? 'scaleX(1)' : 'scaleX(-1)';
+        z.el.style.left      = z.x + 'px';
+        z.el.style.bottom    = z.baseBottom + 'px';
+        z.el.style.transform = flip + ' scale(' + z.scale + ')';
+        if (lL) lL.setAttribute('transform', 'rotate(' + la    + ' -2.75 -16)');
+        if (lR) lR.setAttribute('transform', 'rotate(' + (-la) + '  2.75 -16)');
+        return;
+      }}
+
+      if (z.thrown) {{
+        z.vy          -= GRAVITY;
+        z.throwHeight += z.vy;
+        if (z.throwHeight <= 0) {{
+          z.throwHeight = 0;
+          z.thrown      = false;
+          var dir = z.vx >= 0 ? 1 : -1;
+          z.vx = dir * (0.06 + Math.random() * 0.12);
+        }}
+        z.x += z.vx;
+        if (z.x >  W + 40) z.x = -40;
+        if (z.x < -40)     z.x =  W + 40;
+        z.el.style.left   = z.x + 'px';
+        z.el.style.bottom = (z.baseBottom + z.throwHeight) + 'px';
+        var tilt = Math.max(-45, Math.min(45, -z.vy * 4));
+        var flip = z.vx >= 0 ? 'scaleX(1)' : 'scaleX(-1)';
+        z.el.style.transform = flip + ' scale(' + z.scale + ') rotate(' + tilt + 'deg)';
+        var la = Math.sin(t * 10 + z.phase) * 50;
+        if (lL) lL.setAttribute('transform', 'rotate(' + la    + ' -2.75 -16)');
+        if (lR) lR.setAttribute('transform', 'rotate(' + (-la) + '  2.75 -16)');
+        return;
+      }}
+
+      // Normal walk
       z.x += z.vx;
-      var W = canvas.width;
       if (z.x >  W + 40) z.x = -40;
       if (z.x < -40)     z.x =  W + 40;
       var bob = 1.8 * Math.abs(Math.sin(t * 3.5 + z.phase));
@@ -293,8 +406,6 @@ def _inject_background() -> None:
       var flip = z.vx < 0 ? 'scaleX(-1)' : 'scaleX(1)';
       z.el.style.transform = flip + ' scale(' + z.scale + ')';
       var la = Math.sin(t * 3.5 + z.phase) * 22;
-      var lL = z.el.querySelector('.z-leg-l');
-      var lR = z.el.querySelector('.z-leg-r');
       if (lL) lL.setAttribute('transform', 'rotate(' + la       + ' -2.75 -16)');
       if (lR) lR.setAttribute('transform', 'rotate(' + (-la)    + '  2.75 -16)');
     }});

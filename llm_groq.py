@@ -203,7 +203,8 @@ _SYSTEM_PROMPT = (
     "s'il survivrait, ou veut simuler un scénario d'horreur "
     "(ex: 'je survivrais dans X ?', 'mes chances de survie dans X').\n\n"
     "Pour les questions générales sans recommandation (histoire du genre, définitions), "
-    "réponds directement.\n\n"
+    "réponds directement.\n"
+    "Ne mentionne jamais le nom d'un outil dans ta réponse à l'utilisateur.\n\n"
     "Format pour query_movie_metadata :\n"
     "🎬 [Titre] — [Année]\n"
     "Genres  : [genres]\n"
@@ -453,7 +454,11 @@ class GroqLLM:
                 tool_result_msg = {
                     "role":         "tool",
                     "tool_call_id": tool_call.id,
-                    "content":      context
+                    "content": (
+                        context +
+                        "\n\n[INSTRUCTION : génère une réponse engageante pour l'utilisateur "
+                        "en te basant sur ce contexte. Ne mentionne pas le nom de l'outil.]"
+                    )
                 }
                 response2 = await self.client.chat.completions.create(
                     model=self.config.model,
@@ -472,7 +477,11 @@ class GroqLLM:
                 tool_result_msg = {
                     "role":         "tool",
                     "tool_call_id": tool_call.id,
-                    "content":      context
+                    "content": (
+                        context +
+                        "\n\n[INSTRUCTION : réponds directement à l'utilisateur en te basant "
+                        "sur ces films. Ne mentionne pas le nom de l'outil dans ta réponse.]"
+                    )
                 }
                 response2 = await self.client.chat.completions.create(
                     model=self.config.model,

@@ -690,7 +690,7 @@ def _inject_background() -> None:
 
 # ── Juge verdict (bandeau bas) ────────────────────────────────────────────────
 
-def _inject_judge_verdict(verdict: dict | None) -> None:
+def _inject_judge_verdict(verdict: dict | None, tools_used: list | None = None) -> None:
     """Injecte le verdict du Juge dans le bandeau stBottom, style horreur."""
     if not verdict:
         return
@@ -707,6 +707,13 @@ def _inject_judge_verdict(verdict: dict | None) -> None:
         icon, color, label = "⚠️", "#b85c00", "LE JUGE EST MITIGÉ"
     else:
         icon, color, label = "💀", "#8b0000", "LE JUGE CONDAMNE"
+
+    tools_str  = " › ".join(t for t in (tools_used or []) if t != "groq-llm")
+    tools_html = (
+        f'<span style="color:rgba(139,0,0,0.6);flex-shrink:0;margin:0 2px">|</span>'
+        f'<span style="color:rgba(140,100,100,0.75);flex-shrink:0;letter-spacing:0.5px">'
+        f'&#9881; {tools_str}</span>'
+    ) if tools_str else ""
 
     components.html(f"""
 <script>
@@ -738,6 +745,7 @@ def _inject_judge_verdict(verdict: dict | None) -> None:
       '<span style="color:rgba(200,80,80,0.85);flex-shrink:0">' +
         'Confiance : <b style="color:{color}">{conf_pct} %</b>' +
       '</span>' +
+      '{tools_html}' +
       '<span style="color:rgba(139,0,0,0.6);flex-shrink:0;margin:0 2px">|</span>' +
       '<span style="color:rgba(170,90,90,0.80);font-style:italic;' +
              'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">' +
@@ -792,7 +800,8 @@ if prompt := st.chat_input("Murmure ton sort dans l'obscurité..."):
                 response.raise_for_status()
                 data   = response.json()
                 answer = data.get("answer", "Pas de réponse reçue.")
-                st.session_state.last_verdict = data.get("judge_verdict")
+                st.session_state.last_verdict    = data.get("judge_verdict")
+                st.session_state.last_tools_used = data.get("tools_used", [])
             except httpx.ConnectError:
                 answer = "Impossible de joindre le serveur. Vérifie que l'API FastAPI est lancée."
                 st.session_state.last_verdict = None
@@ -806,4 +815,4 @@ if prompt := st.chat_input("Murmure ton sort dans l'obscurité..."):
         st.markdown(answer)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
-    _inject_judge_verdict(st.session_state.last_verdict)
+    _inject_judge_verdict(st.session_state.last_verdict, st.session_state.get("last_tools_used"))

@@ -7,6 +7,11 @@ import logging
 import os
 from datetime import date
 
+_MOIS_FR = [
+    "", "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre"
+]
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -83,8 +88,10 @@ def calculate_movie_age(movie_name: str) -> str:
         if row["original_title"] and row["original_title"] != row["title"]:
             title_display += f" ({row['original_title']})"
 
+        date_fr = f"{release.day} {_MOIS_FR[release.month]} {release.year}"
+
         return (
-            f"« {title_display} » est sorti le {release.strftime('%d %B %Y')}.\n"
+            f"« {title_display} » est sorti le {date_fr}.\n"
             f"Il y a exactement {age} an{'s' if age > 1 else ''} "
             f"(en {today.year})."
         )

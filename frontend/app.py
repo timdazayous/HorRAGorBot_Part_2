@@ -184,6 +184,17 @@ def _inject_background() -> None:
       color: rgba(180,70,70,0.55) !important;
       font-style: italic;
     }}
+    [data-testid="stChatMessage"] p,
+    [data-testid="stChatMessage"] li,
+    [data-testid="stChatMessage"] pre {{
+      overflow-wrap: break-word !important;
+      word-break: break-word !important;
+      white-space: pre-wrap !important;
+    }}
+    [data-testid="stChatMessage"] pre {{
+      overflow-x: auto !important;
+      max-width: 100% !important;
+    }}
   `;
   doc.head.appendChild(style);
 
@@ -657,10 +668,14 @@ def _inject_background() -> None:
         msg.querySelector('img[alt="assistant"]') ||
         msg.querySelector('[aria-label*="assistant"]');
       if (isAssistant) {{
-        msg.style.setProperty('background',    'rgba(65, 10, 30, 0.32)',          'important');
-        msg.style.setProperty('border-radius', '12px',                            'important');
-        msg.style.setProperty('border',        'none', 'important');
-        msg.style.setProperty('padding',       '8px 12px',                        'important');
+        msg.style.setProperty('background',    'rgba(65, 10, 30, 0.32)', 'important');
+        msg.style.setProperty('border-radius', '12px',                   'important');
+        msg.style.setProperty('border',        'none',                   'important');
+        msg.style.setProperty('padding',       '10px 14px',              'important');
+        msg.style.setProperty('overflow',      'visible',                'important');
+        msg.style.setProperty('max-height',    'none',                   'important');
+        msg.style.setProperty('width',         '100%',                   'important');
+        msg.style.setProperty('box-sizing',    'border-box',             'important');
         msg.setAttribute('data-hg-styled', '1');
       }}
     }});
@@ -668,6 +683,71 @@ def _inject_background() -> None:
   styleAssistantBubbles();
   var chatObserver = new MutationObserver(styleAssistantBubbles);
   chatObserver.observe(doc.body, {{ childList: true, subtree: true }});
+}})();
+</script>
+""", height=0)
+
+
+# ── Juge verdict (bandeau bas) ────────────────────────────────────────────────
+
+def _inject_judge_verdict(verdict: dict | None) -> None:
+    """Injecte le verdict du Juge dans le bandeau stBottom, style horreur."""
+    if not verdict:
+        return
+
+    is_valid   = verdict.get("is_valid", True)
+    confidence = verdict.get("confidence", 0.75)
+    reasoning  = (verdict.get("reasoning") or "").replace('"', '&quot;').replace("'", "\\'")
+    reasoning  = reasoning[:140] + ("…" if len(reasoning) > 140 else "")
+    conf_pct   = int(confidence * 100)
+
+    if is_valid and confidence >= 0.80:
+        icon, color, label = "🩸", "#cc2222", "LE JUGE A APPROUVÉ"
+    elif is_valid:
+        icon, color, label = "⚠️", "#b85c00", "LE JUGE EST MITIGÉ"
+    else:
+        icon, color, label = "💀", "#8b0000", "LE JUGE CONDAMNE"
+
+    components.html(f"""
+<script>
+(function() {{
+  var doc = window.parent.document;
+
+  var old = doc.getElementById('hg-judge');
+  if (old) old.remove();
+
+  function inject() {{
+    var stBot = doc.querySelector('[data-testid="stBottom"]');
+    if (!stBot) {{ setTimeout(inject, 200); return; }}
+
+    var bar = doc.createElement('div');
+    bar.id = 'hg-judge';
+    bar.style.cssText =
+      'display:flex;align-items:center;gap:8px;' +
+      'padding:5px 18px 5px 14px;font-family:monospace;' +
+      'font-size:11px;line-height:1.3;' +
+      'background:linear-gradient(90deg,rgba(60,4,4,0.97) 0%,rgba(30,2,2,0.97) 100%);' +
+      'border-top:1px solid rgba(139,0,0,0.45);' +
+      'border-bottom:1px solid rgba(80,0,0,0.3);';
+
+    bar.innerHTML =
+      '<span style="font-size:16px;flex-shrink:0">{icon}</span>' +
+      '<span style="color:{color};font-weight:bold;letter-spacing:1.5px;' +
+             'font-size:10px;flex-shrink:0;text-shadow:0 0 6px {color}">{label}</span>' +
+      '<span style="color:rgba(139,0,0,0.6);flex-shrink:0;margin:0 2px">|</span>' +
+      '<span style="color:rgba(200,80,80,0.85);flex-shrink:0">' +
+        'Confiance : <b style="color:{color}">{conf_pct} %</b>' +
+      '</span>' +
+      '<span style="color:rgba(139,0,0,0.6);flex-shrink:0;margin:0 2px">|</span>' +
+      '<span style="color:rgba(170,90,90,0.80);font-style:italic;' +
+             'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">' +
+        '{reasoning}' +
+      '</span>';
+
+    stBot.insertBefore(bar, stBot.firstChild);
+  }}
+
+  inject();
 }})();
 </script>
 """, height=0)
@@ -689,6 +769,9 @@ st.caption("Ton guide dans l'univers de l'horreur — cinéma, littérature, jeu
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+if "last_verdict" not in st.session_state:
+    st.session_state.last_verdict = None
+
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -707,14 +790,20 @@ if prompt := st.chat_input("Murmure ton sort dans l'obscurité..."):
                     timeout=60.0,
                 )
                 response.raise_for_status()
-                answer = response.json().get("answer", "Pas de réponse reçue.")
+                data   = response.json()
+                answer = data.get("answer", "Pas de réponse reçue.")
+                st.session_state.last_verdict = data.get("judge_verdict")
             except httpx.ConnectError:
                 answer = "Impossible de joindre le serveur. Vérifie que l'API FastAPI est lancée."
+                st.session_state.last_verdict = None
             except httpx.HTTPStatusError as e:
                 answer = f"Erreur serveur ({e.response.status_code})."
+                st.session_state.last_verdict = None
             except Exception as e:
                 answer = f"Erreur inattendue : {e}"
+                st.session_state.last_verdict = None
 
         st.markdown(answer)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
+    _inject_judge_verdict(st.session_state.last_verdict)

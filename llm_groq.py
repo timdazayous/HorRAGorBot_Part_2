@@ -25,6 +25,7 @@ from tools import (
     find_similar_horror_movies, FIND_SIMILAR_TOOL,
     calculate_movie_age,        MOVIE_AGE_TOOL,
     scrape_detailed_synopsis,   SCRAPE_SYNOPSIS_TOOL,
+    get_survival_context,       SURVIVAL_SIM_TOOL,
 )
 
 load_dotenv()
@@ -95,6 +96,7 @@ TOOLS = [
     FIND_SIMILAR_TOOL,
     MOVIE_AGE_TOOL,
     SCRAPE_SYNOPSIS_TOOL,
+    SURVIVAL_SIM_TOOL,
     {
         "type": "function",
         "function": {
@@ -196,7 +198,10 @@ _SYSTEM_PROMPT = (
     "- similar_movies : pour trouver des films similaires à un titre précis.\n"
     "- detailed_synopsis : pour des détails approfondis non disponibles en base "
     "(anecdotes, tournage, contexte). Utilise seulement si explicitement demandé.\n"
-    "- movie_age : quand l'utilisateur demande l'âge d'un film.\n\n"
+    "- movie_age : quand l'utilisateur demande l'âge d'un film.\n"
+    "- survival_sim : quand l'utilisateur demande ses chances de survie dans un film, "
+    "s'il survivrait, ou veut simuler un scénario d'horreur "
+    "(ex: 'je survivrais dans X ?', 'mes chances de survie dans X').\n\n"
     "Pour les questions générales sans recommandation (histoire du genre, définitions), "
     "réponds directement.\n\n"
     "Format pour query_movie_metadata :\n"
@@ -439,6 +444,24 @@ class GroqLLM:
                     max_tokens=self.config.max_tokens
                 )
                 answer = f"{similar}\n\n--------\n\n{response2.choices[0].message.content}"
+
+            elif tool_name == "survival_sim":
+                movie_name = args.get("movie_name", "")
+                context    = await asyncio.to_thread(get_survival_context, movie_name)
+                tools_used = ["survival_sim", "groq-llm"]
+
+                tool_result_msg = {
+                    "role":         "tool",
+                    "tool_call_id": tool_call.id,
+                    "content":      context
+                }
+                response2 = await self.client.chat.completions.create(
+                    model=self.config.model,
+                    messages=[*messages, assistant_msg, tool_result_msg],
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens
+                )
+                answer = response2.choices[0].message.content
 
             else:
                 query   = args.get("query", user_question)

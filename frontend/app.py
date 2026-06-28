@@ -260,7 +260,10 @@ def _inject_background() -> None:
       dragging:    false,
       throwHeight: 0,
       vy:          0,
-      platform:    null
+      platform:    null,
+      orbiting:    false,
+      orbitAngle:  0,
+      orbitVel:    0
     }});
   }}
 
@@ -271,7 +274,18 @@ def _inject_background() -> None:
       e.stopPropagation();
       dragState.zombie  = z;
       dragState.offsetX = e.clientX - z.x;
-      // detach from any platform and normalise coords to groundLevel
+      // Exit orbit: convert polar position back to cartesian
+      if (z.orbiting) {{
+        var ofx     = moonCx + MOON_R * Math.sin(z.orbitAngle);
+        var ofy_top = moonCy + MOON_R * Math.cos(z.orbitAngle);
+        z.x           = ofx;
+        z.baseBottom  = z.groundLevel;
+        z.throwHeight = Math.max(0, (par.innerHeight - ofy_top) - z.groundLevel);
+        z.orbiting    = false;
+        z.el.style.top             = '';
+        z.el.style.transformOrigin = '';
+      }}
+      // Detach from any platform and normalise coords to groundLevel
       var curVisual = z.baseBottom + z.throwHeight;
       z.platform    = null;
       z.baseBottom  = z.groundLevel;
@@ -422,6 +436,17 @@ def _inject_background() -> None:
   var castlePlatforms = _makeCastle();
   par.addEventListener('resize', function() {{ castlePlatforms = _makeCastle(); }});
 
+  // ── Moon orbital constants ─────────────────────────────────────────────
+  // Moon CSS: bottom:310px right:470px  — SVG 180×180 (viewBox 200×200)
+  // Moon surface circle: r=52 in SVG → r=52*(180/200)=46.8 rendered
+  var MOON_R = 50; // orbit radius (zombie feet on moon surface)
+  var moonCx = par.innerWidth  - 560; // center X from viewport left (right:470 + 90)
+  var moonCy = par.innerHeight - 400; // center Y from viewport top  (bottom:310 + 90)
+  par.addEventListener('resize', function() {{
+    moonCx = par.innerWidth  - 560;
+    moonCy = par.innerHeight - 400;
+  }});
+
   // ── Animation loop ────────────────────────────────────────────────────
   function draw(t) {{
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -448,6 +473,28 @@ def _inject_background() -> None:
         z.el.style.left      = z.x + 'px';
         z.el.style.bottom    = (z.baseBottom + z.throwHeight) + 'px';
         z.el.style.transform = flip + ' scale(' + z.scale + ')';
+        if (lL) lL.setAttribute('transform', 'rotate(' + la    + ' -2.75 -16)');
+        if (lR) lR.setAttribute('transform', 'rotate(' + (-la) + '  2.75 -16)');
+        return;
+      }}
+
+      if (z.orbiting) {{
+        z.orbitAngle += z.orbitVel;
+        var sinA = Math.sin(z.orbitAngle);
+        var cosA = Math.cos(z.orbitAngle);
+        var feetX    = moonCx + MOON_R * sinA;
+        var feetY_t  = moonCy + MOON_R * cosA; // viewport top-based
+        z.x = feetX;
+        // Position div so its bottom-center = feet point
+        z.el.style.left            = (feetX - 18) + 'px'; // 18 = half of 36px SVG width
+        z.el.style.top             = (feetY_t - 58) + 'px'; // 58 = SVG height
+        z.el.style.bottom          = '';
+        z.el.style.transformOrigin = 'center bottom';
+        var thetaDeg = z.orbitAngle * (180 / Math.PI);
+        // Flip based on orbit direction so zombie faces forward
+        var fwd = z.orbitVel >= 0 ? 'scaleX(1)' : 'scaleX(-1)';
+        z.el.style.transform = 'rotate(' + thetaDeg + 'deg) ' + fwd + ' scale(' + z.scale + ')';
+        var la = Math.sin(t * 3.5 + z.phase) * 22;
         if (lL) lL.setAttribute('transform', 'rotate(' + la    + ' -2.75 -16)');
         if (lR) lR.setAttribute('transform', 'rotate(' + (-la) + '  2.75 -16)');
         return;
@@ -491,6 +538,22 @@ def _inject_background() -> None:
               }}
             }}
           }});
+        }}
+        // ── Moon landing (any direction) ─────────────────────────────────
+        if (!landed) {{
+          var feetY_top = par.innerHeight - (z.baseBottom + z.throwHeight);
+          var dx = z.x - moonCx;
+          var dy = feetY_top - moonCy;
+          if (Math.sqrt(dx * dx + dy * dy) <= MOON_R + 14) {{
+            var angle = Math.atan2(dx, dy); // 0=bottom, +π/2=right, +π=top
+            z.orbitAngle = angle;
+            var baseOV   = 0.015 + Math.random() * 0.012;
+            z.orbitVel   = z.vx >= 0 ? baseOV : -baseOV;
+            z.orbiting   = true;
+            z.thrown     = false;
+            z.platform   = null;
+            landed       = true;
+          }}
         }}
         // ── Ground landing ───────────────────────────────────────────────
         if (!landed && newFeetY <= z.groundLevel) {{

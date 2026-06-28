@@ -255,9 +255,8 @@ def _inject_background() -> None:
       dragState.offsetX = e.clientX - z.x;
       dragState.offsetY = (par.innerHeight - e.clientY) - (z.baseBottom + z.throwHeight);
       dragState.history = [{{ x: e.clientX, y: e.clientY, t: Date.now() }}];
-      z.dragging    = true;
-      z.thrown      = false;
-      z.throwHeight = 0;
+      z.dragging = true;
+      z.thrown   = false;
       z.el.style.cursor = 'grabbing';
       z.el.style.zIndex = '200';
       doc.body.style.userSelect = 'none';
@@ -268,9 +267,11 @@ def _inject_background() -> None:
     if (!dragState.zombie) return;
     var z = dragState.zombie;
     z.x = e.clientX - dragState.offsetX;
-    z.baseBottom = Math.max(10, Math.min(
-      par.innerHeight * 0.85,
-      (par.innerHeight - e.clientY) - dragState.offsetY
+    var visualBottom = (par.innerHeight - e.clientY) - dragState.offsetY;
+    // throwHeight = extra height above fixed ground; clamped to [0, 85vh above ground]
+    z.throwHeight = Math.max(0, Math.min(
+      par.innerHeight * 0.85 - z.baseBottom,
+      visualBottom - z.baseBottom
     ));
     dragState.history.push({{ x: e.clientX, y: e.clientY, t: Date.now() }});
     if (dragState.history.length > 8) dragState.history.shift();
@@ -288,11 +289,12 @@ def _inject_background() -> None:
     }}
     z.vx = Math.max(-8, Math.min(8, vx));
     if (Math.abs(z.vx) < 0.05) z.vx = 0.08 * (Math.random() > 0.5 ? 1 : -1);
-    if (vy > 0.5) {{
-      z.vy          = Math.min(14, vy);
-      z.thrown      = true;
-      z.throwHeight = 0;
+    if (z.throwHeight > 0 || vy > 0.5) {{
+      // zombie is in the air or was thrown up — gravity will bring it to baseBottom
+      z.vy     = withThrow ? Math.min(14, vy) : 0;
+      z.thrown = true;
     }} else {{
+      // already at ground level, resume walking
       z.thrown      = false;
       z.throwHeight = 0;
       var dir = z.vx >= 0 ? 1 : -1;
@@ -366,7 +368,7 @@ def _inject_background() -> None:
         var la = Math.sin(t * 14 + z.phase) * 50;
         var flip = z.vx >= 0 ? 'scaleX(1)' : 'scaleX(-1)';
         z.el.style.left      = z.x + 'px';
-        z.el.style.bottom    = z.baseBottom + 'px';
+        z.el.style.bottom    = (z.baseBottom + z.throwHeight) + 'px';
         z.el.style.transform = flip + ' scale(' + z.scale + ')';
         if (lL) lL.setAttribute('transform', 'rotate(' + la    + ' -2.75 -16)');
         if (lR) lR.setAttribute('transform', 'rotate(' + (-la) + '  2.75 -16)');

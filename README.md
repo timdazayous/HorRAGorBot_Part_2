@@ -13,6 +13,10 @@ Agent conversationnel spécialisé dans l'univers de l'horreur (cinéma, littér
 │   • Thème dark horror animé          │
 │     (zombies, chauves-souris,        │
 │      château, lune, brouillard)      │
+│   • Zombies interactifs : drag &     │
+│     throw, plateformes (nuages,      │
+│      créneaux du château, orbite     │
+│      autour de la lune)              │
 │   • Verdict du Juge dans le          │
 │     bandeau bas (🩸 / ⚠️ / 💀)       │
 └──────────────────┬───────────────────┘
@@ -84,6 +88,8 @@ Crée un fichier `.env` à la racine (copie `.env.example`) :
 GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxx
 
 # Base de données Supabase
+# L'une OU l'autre suffit : le code utilise SUPABASE_DB_URL en priorité,
+# sinon DATABASE_URL en fallback.
 DATABASE_URL=postgresql://postgres:PASSWORD@db.XXXX.supabase.co:5432/postgres
 SUPABASE_DB_URL=postgresql://postgres:PASSWORD@db.XXXX.supabase.co:5432/postgres
 
@@ -157,6 +163,27 @@ Le verdict s'affiche en temps réel dans le **bandeau bas** de l'interface Strea
 | ⚠️ | LE JUGE EST MITIGÉ | is_valid=True et confiance < 80 % |
 | 💀 | LE JUGE CONDAMNE | is_valid=False |
 
+Le bandeau affiche aussi les **outils utilisés** (`⚙ search_horror_movies`, etc.).
+Les noms d'outils n'apparaissent jamais dans le corps de la réponse de l'agent :
+ils sont réservés au bandeau du Juge pour garder les messages naturels.
+
+---
+
+## Interface interactive (thème dark horror)
+
+L'arrière-plan animé de Streamlit est entièrement injecté en JS/SVG (canvas + overlay).
+Les zombies sont **manipulables à la souris** :
+
+- **Drag & throw** — attrape un zombie, déplace-le et relâche pour le lancer ;
+  une physique de gravité le fait retomber jusqu'au sol en arc.
+- **Plateformes** — un zombie lancé peut atterrir et marcher sur :
+  - les **nuages** dérivants (il en tombe s'il dépasse le bord),
+  - les **créneaux du château** (5 plateformes statiques),
+  - la **lune**, autour de laquelle il marche en orbite, y compris tête en bas.
+
+> Le bandeau du Juge est placé sous le champ de saisie pour ne pas masquer
+> les zombies qui marchent au sol.
+
 ---
 
 ## Endpoints API
@@ -226,7 +253,8 @@ HorRAGorBot_Part_2/
 | Erreur | Solution |
 |--------|----------|
 | `GROQ_API_KEY non configurée` | Vérifie le fichier `.env` |
-| `SUPABASE_DB_URL non configurée` | Ajoute `SUPABASE_DB_URL` dans `.env` |
+| `SUPABASE_DB_URL et DATABASE_URL absentes` | Renseigne au moins `DATABASE_URL` dans `.env` |
+| L'agent répond "base inaccessible" / "aucun film trouvé" | Supabase est en pause (Free Tier après 7 j) — réactive le projet sur le dashboard Supabase |
 | `ModuleNotFoundError` | Lance `uv sync` |
 | `Connection refused` sur /chat | Vérifie que `uvicorn main_api:app` tourne |
 | HuggingFace télécharge le modèle | Normal au 1er lancement (~91 Mo, mis en cache ensuite) |

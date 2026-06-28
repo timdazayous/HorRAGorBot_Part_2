@@ -752,7 +752,7 @@ def _inject_judge_verdict(verdict: dict | None, tools_used: list | None = None) 
         '{reasoning}' +
       '</span>';
 
-    stBot.insertBefore(bar, stBot.firstChild);
+    stBot.appendChild(bar);
   }}
 
   inject();

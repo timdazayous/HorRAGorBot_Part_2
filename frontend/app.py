@@ -116,6 +116,16 @@ _BAT = """<svg class="bat-svg" viewBox="-32 -22 64 44"
   <path d="M5,0  C12,-14  30,-6  30,4 C23,10  17,6  11,9 C8,5  6,2  5,0 Z"    fill="#0e0a0a"/>
 </svg>"""
 
+# ── Cloud ─────────────────────────────────────────────────────────────────────
+# viewBox bottom (y=0) = landing surface; cloud mass sits above
+_CLOUD = """<svg viewBox="-65 -45 130 45"
+     xmlns="http://www.w3.org/2000/svg" width="130" height="45">
+  <ellipse cx="0"   cy="-22" rx="58" ry="20" fill="#1c1420"/>
+  <ellipse cx="-22" cy="-30" rx="30" ry="15" fill="#211828"/>
+  <ellipse cx="22"  cy="-33" rx="34" ry="17" fill="#211828"/>
+  <ellipse cx="0"   cy="-38" rx="22" ry="12" fill="#261e2e"/>
+</svg>"""
+
 # ── Zombie ────────────────────────────────────────────────────────────────────
 _ZOMBIE = """<svg class="zombie-svg" viewBox="-15 -46 30 48"
      xmlns="http://www.w3.org/2000/svg" width="36" height="58">
@@ -136,6 +146,7 @@ def _inject_background() -> None:
     moon   = _MOON  .replace("`", "\\`").replace("\n", " ")
     bat    = _BAT   .replace("`", "\\`").replace("\n", " ")
     zombie = _ZOMBIE.replace("`", "\\`").replace("\n", " ")
+    cloud  = _CLOUD .replace("`", "\\`").replace("\n", " ")
 
     components.html(f"""
 <script>
@@ -162,6 +173,10 @@ def _inject_background() -> None:
       100% {{ transform: scaleY(0.5); }}
     }}
     .zombie-eye {{ filter: drop-shadow(0 0 3px #cc2222); }}
+    @keyframes cloud-pulse {{
+      0%,100% {{ opacity: 0.82; }}
+      50%     {{ opacity: 0.55; }}
+    }}
     @keyframes fog-a {{ 0%,100%{{transform:translateX(0);opacity:.7}} 50%{{transform:translateX(6%);opacity:.35}} }}
     @keyframes fog-b {{ 0%,100%{{transform:translateX(0);opacity:.5}} 50%{{transform:translateX(-5%);opacity:.25}} }}
     @keyframes fog-c {{ 0%,100%{{transform:translateX(0);opacity:.55}} 50%{{transform:translateX(8%);opacity:.20}} }}
@@ -232,17 +247,20 @@ def _inject_background() -> None:
     zd.innerHTML = `{zombie}`;
     zd.style.cssText = 'position:absolute;pointer-events:auto;cursor:grab;user-select:none;';
     zombieOverlay.appendChild(zd);
+    var groundY = 86 + Math.random() * 22;
     zombies.push({{
       el:          zd,
       x:           Math.random() * par.innerWidth,
-      baseBottom:  86 + Math.random() * 22,
+      groundLevel: groundY,
+      baseBottom:  groundY,
       vx:          (0.06 + Math.random() * 0.16) * (Math.random() > 0.5 ? 1 : -1),
       phase:       Math.random() * Math.PI * 2,
       scale:       0.72 + Math.random() * 0.50,
       thrown:      false,
       dragging:    false,
       throwHeight: 0,
-      vy:          0
+      vy:          0,
+      platform:    null
     }});
   }}
 
@@ -253,7 +271,12 @@ def _inject_background() -> None:
       e.stopPropagation();
       dragState.zombie  = z;
       dragState.offsetX = e.clientX - z.x;
-      dragState.offsetY = (par.innerHeight - e.clientY) - (z.baseBottom + z.throwHeight);
+      // detach from any platform and normalise coords to groundLevel
+      var curVisual = z.baseBottom + z.throwHeight;
+      z.platform    = null;
+      z.baseBottom  = z.groundLevel;
+      z.throwHeight = Math.max(0, curVisual - z.groundLevel);
+      dragState.offsetY = (par.innerHeight - e.clientY) - curVisual;
       dragState.history = [{{ x: e.clientX, y: e.clientY, t: Date.now() }}];
       z.dragging = true;
       z.thrown   = false;
@@ -344,6 +367,31 @@ def _inject_background() -> None:
     }});
   }}
 
+  // ── Clouds (3 drifting platforms) ─────────────────────────────────────
+  // landingY = height from bottom where zombie feet touch the cloud top
+  var CLOUD_HALF_W = 58; // base half-width matching SVG rx
+  var cloudDefs = [
+    {{ landingY: 210, startX: 0.20, vx:  0.12, scale: 0.90, delay: '0s'   }},
+    {{ landingY: 345, startX: 0.55, vx: -0.16, scale: 1.10, delay: '3.5s' }},
+    {{ landingY: 262, startX: 0.78, vx:  0.22, scale: 0.75, delay: '7s'   }}
+  ];
+  var clouds = cloudDefs.map(function(cd) {{
+    var cel = doc.createElement('div');
+    cel.innerHTML = `{cloud}`;
+    cel.style.cssText =
+      'position:absolute;pointer-events:none;transform-origin:bottom center;' +
+      'animation:cloud-pulse ' + (8 + Math.random() * 5).toFixed(1) + 's ease-in-out infinite ' + cd.delay + ';';
+    bg.appendChild(cel);
+    return {{
+      el:       cel,
+      x:        cd.startX * par.innerWidth,
+      landingY: cd.landingY,
+      vx:       cd.vx,
+      scale:    cd.scale,
+      halfWidth: CLOUD_HALF_W * cd.scale
+    }};
+  }});
+
   // ── Animation loop ────────────────────────────────────────────────────
   function draw(t) {{
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -376,11 +424,34 @@ def _inject_background() -> None:
       }}
 
       if (z.thrown) {{
+        var prevFeetY = z.baseBottom + z.throwHeight;
         z.vy          -= GRAVITY;
         z.throwHeight += z.vy;
-        if (z.throwHeight <= 0) {{
+        var newFeetY   = z.baseBottom + z.throwHeight;
+        // ── Cloud landing (only while falling) ──────────────────────────
+        var landed = false;
+        if (z.vy < 0) {{
+          clouds.forEach(function(c) {{
+            if (landed) return;
+            if (prevFeetY >= c.landingY && newFeetY <= c.landingY) {{
+              if (Math.abs(z.x - c.x) <= c.halfWidth) {{
+                z.platform    = c;
+                z.baseBottom  = c.landingY;
+                z.throwHeight = 0;
+                z.thrown      = false;
+                landed        = true;
+                var dir = z.vx >= 0 ? 1 : -1;
+                z.vx = dir * (0.06 + Math.random() * 0.12);
+              }}
+            }}
+          }});
+        }}
+        // ── Ground landing ───────────────────────────────────────────────
+        if (!landed && newFeetY <= z.groundLevel) {{
+          z.baseBottom  = z.groundLevel;
           z.throwHeight = 0;
           z.thrown      = false;
+          z.platform    = null;
           var dir = z.vx >= 0 ? 1 : -1;
           z.vx = dir * (0.06 + Math.random() * 0.12);
         }}
@@ -398,7 +469,17 @@ def _inject_background() -> None:
         return;
       }}
 
-      // Normal walk
+      // Normal walk (ground or cloud platform)
+      if (z.platform) {{
+        z.baseBottom = z.platform.landingY;  // track cloud Y
+        z.x         += z.platform.vx;        // carried by cloud
+        // Edge detection — fall off when past cloud bounds
+        if (Math.abs(z.x - z.platform.x) > z.platform.halfWidth + 4) {{
+          z.platform = null;
+          z.thrown   = true;
+          z.vy       = 0;
+        }}
+      }}
       z.x += z.vx;
       if (z.x >  W + 40) z.x = -40;
       if (z.x < -40)     z.x =  W + 40;
@@ -410,6 +491,16 @@ def _inject_background() -> None:
       var la = Math.sin(t * 3.5 + z.phase) * 22;
       if (lL) lL.setAttribute('transform', 'rotate(' + la       + ' -2.75 -16)');
       if (lR) lR.setAttribute('transform', 'rotate(' + (-la)    + '  2.75 -16)');
+    }});
+
+    // Clouds
+    clouds.forEach(function(c) {{
+      c.x += c.vx;
+      if (c.x - c.halfWidth >  W + 10) c.x = -c.halfWidth;
+      if (c.x + c.halfWidth < -10)     c.x =  W + c.halfWidth;
+      c.el.style.left      = (c.x - 65) + 'px'; // center at c.x; scale handled by transform-origin
+      c.el.style.bottom    = c.landingY + 'px';
+      c.el.style.transform = 'scale(' + c.scale + ')';
     }});
 
     // Bats

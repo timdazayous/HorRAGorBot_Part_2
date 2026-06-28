@@ -392,6 +392,36 @@ def _inject_background() -> None:
     }};
   }});
 
+  // ── Castle platforms (static ledges derived from SVG geometry) ────────
+  // Castle: viewBox 400×310 → rendered 520×403 → scale 1.3
+  // CSS:    bottom:55px  right:1%
+  // castleX0 = left edge of castle (recalculated on resize)
+  var CASTLE_SCALE = 403 / 310; // = 1.3
+  var CASTLE_H     = 403;
+  var CASTLE_W     = 520;
+  var CASTLE_BOT   = 55; // CSS bottom in px
+  // SVG geometry: [cx, half-width, top-surface y]
+  var _cpSVG = [
+    [200, 82,  116], // main keep battlements
+    [76,  24,  152], // left mid-tower
+    [324, 24,  152], // right mid-tower
+    [24,  11,  204], // left small tower
+    [376, 11,  204]  // right small tower
+  ];
+  function _makeCastle() {{
+    var cx0 = par.innerWidth * 0.99 - CASTLE_W;
+    return _cpSVG.map(function(p) {{
+      return {{
+        x:         cx0 + p[0] * CASTLE_SCALE,
+        landingY:  Math.round(CASTLE_BOT + CASTLE_H - p[2] * CASTLE_SCALE),
+        halfWidth: p[1] * CASTLE_SCALE,
+        vx:        0
+      }};
+    }});
+  }}
+  var castlePlatforms = _makeCastle();
+  par.addEventListener('resize', function() {{ castlePlatforms = _makeCastle(); }});
+
   // ── Animation loop ────────────────────────────────────────────────────
   function draw(t) {{
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -431,7 +461,23 @@ def _inject_background() -> None:
         // ── Cloud landing (only while falling) ──────────────────────────
         var landed = false;
         if (z.vy < 0) {{
+          // Check cloud platforms
           clouds.forEach(function(c) {{
+            if (landed) return;
+            if (prevFeetY >= c.landingY && newFeetY <= c.landingY) {{
+              if (Math.abs(z.x - c.x) <= c.halfWidth) {{
+                z.platform    = c;
+                z.baseBottom  = c.landingY;
+                z.throwHeight = 0;
+                z.thrown      = false;
+                landed        = true;
+                var dir = z.vx >= 0 ? 1 : -1;
+                z.vx = dir * (0.06 + Math.random() * 0.12);
+              }}
+            }}
+          }});
+          // Check castle platforms
+          if (!landed) castlePlatforms.forEach(function(c) {{
             if (landed) return;
             if (prevFeetY >= c.landingY && newFeetY <= c.landingY) {{
               if (Math.abs(z.x - c.x) <= c.halfWidth) {{

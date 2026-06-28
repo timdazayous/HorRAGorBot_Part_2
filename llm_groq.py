@@ -66,9 +66,9 @@ def initialize_retriever() -> None:
 # ---------------------------------------------------------------------------
 
 def _fetch_films_from_db(film_ids: list[int]) -> list[dict]:
-    db_url = os.environ.get("SUPABASE_DB_URL")
+    db_url = os.environ.get("SUPABASE_DB_URL") or os.environ.get("DATABASE_URL")
     if not db_url:
-        logger.warning("SUPABASE_DB_URL non configurée")
+        logger.warning("SUPABASE_DB_URL et DATABASE_URL absentes du .env")
         return []
     try:
         conn = psycopg2.connect(db_url)

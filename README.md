@@ -1,35 +1,43 @@
 # 🩸 HorRAGor BOT — Partie 2
 
-Agent conversationnel spécialisé dans l'univers de l'horreur (cinéma, littérature, jeux vidéo), basé sur une architecture **ReAct** (LangGraph + Groq LLM + FAISS + Supabase).
+Agent conversationnel spécialisé dans l'univers de l'horreur (cinéma, littérature, jeux vidéo), basé sur une architecture **ReAct** avec Groq LLM, FAISS et Supabase.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────┐
-│   Streamlit  (Front-End)    │
-│   frontend/app.py           │
-└──────────────┬──────────────┘
-               │ HTTP POST /chat
-               ▼
-┌─────────────────────────────┐
-│   FastAPI    (Back-End)     │
-│   main_api.py               │
-└──────────────┬──────────────┘
-               │ generate_response()
-               ▼
-┌─────────────────────────────┐
-│   Groq LLM  llama-3.3-70b  │
-│   llm_groq.py               │
-└──────────────┬──────────────┘
-               │ tool calls
-       ┌───────┴────────┐
-       ▼                ▼
-┌────────────┐   ┌──────────────────┐
-│ FAISS RAM  │   │ Supabase (PostgreSQL) │
-│ 1179 films │   │ film / evaluation │
-└────────────┘   └──────────────────┘
+┌──────────────────────────────────────┐
+│   Streamlit  (Front-End)             │
+│   frontend/app.py                    │
+│   • Thème dark horror animé          │
+│     (zombies, chauves-souris,        │
+│      château, lune, brouillard)      │
+│   • Verdict du Juge dans le          │
+│     bandeau bas (🩸 / ⚠️ / 💀)       │
+└──────────────────┬───────────────────┘
+                   │ HTTP POST /chat
+                   ▼
+┌──────────────────────────────────────┐
+│   FastAPI    (Back-End)              │
+│   main_api.py                        │
+│   • /chat  /health  /info            │
+└──────────────────┬───────────────────┘
+                   │ generate_response()
+                   ▼
+┌──────────────────────────────────────┐
+│   Groq LLM  llama-3.3-70b            │
+│   llm_groq.py                        │
+│   • Tool-use (6 outils)              │
+│   • Le Juge : évaluateur + retry     │
+└──────┬───────────┬───────────────────┘
+       │ tool calls│
+       ▼           ▼
+┌────────────┐  ┌──────────────────────┐
+│ FAISS RAM  │  │ Supabase (PostgreSQL) │
+│ 1179 films │  │ film / evaluation /  │
+│ (synopsis) │  │ genre / analyse_spark│
+└────────────┘  └──────────────────────┘
 ```
 
 ---
@@ -40,10 +48,10 @@ Agent conversationnel spécialisé dans l'univers de l'horreur (cinéma, littér
 |-----------|-------------|
 | LLM | Groq — `llama-3.3-70b-versatile` |
 | Back-End | FastAPI + Uvicorn (async) |
-| Front-End | Streamlit + thème Dracula |
+| Front-End | Streamlit — thème dark horror custom |
 | Embeddings | `sentence-transformers/all-MiniLM-L6-v2` |
 | Mémoire vectorielle | FAISS (index en RAM) |
-| Base de données | Supabase (PostgreSQL) |
+| Base de données | Supabase (PostgreSQL) via psycopg2 |
 | Dépendances | `uv` |
 
 ---
@@ -95,7 +103,7 @@ LLM_MAX_TOKENS=2048
 
 **Terminal 1 — API FastAPI**
 ```bash
-py main_api.py
+uvicorn main_api:app --reload
 # → http://localhost:8000
 # → Swagger : http://localhost:8000/docs
 ```
@@ -111,21 +119,43 @@ streamlit run app.py
 
 ## Outils de l'agent (Tools)
 
-| Tool | Nom | Déclencheur |
-|------|-----|-------------|
-| 1 | `query_movie_metadata` | Question sur un film précis |
-| 2 | `similar_movies` | Demande de films similaires |
-| 3 | `search_horror_movies` | Recherche sémantique libre |
-| 4 | `calculate_movie_age` | *(à venir)* |
-| 5 | `scrape_detailed_synopsis` | *(à venir)* |
+| # | Nom interne | Déclencheur LLM |
+|---|-------------|-----------------|
+| 1 | `query_movie_metadata` | Question sur un film précis ("parle-moi de X", "infos sur X") |
+| 2 | `similar_movies` | Demande de films similaires à un titre |
+| 3 | `search_horror_movies` | Recherche sémantique libre (requête FAISS) |
+| 4 | `movie_age` | Âge d'un film, ancienneté, "est-ce récent ?" |
+| 5 | `detailed_synopsis` | Détails approfondis, anecdotes, contexte de production |
+| 6 | `survival_sim` | Simulation de survie dans un film ("je survivrais dans X ?") |
 
 ### Exemples de questions
 
 ```
-"Parle-moi de The Shining"           → query_movie_metadata
-"Films similaires à Hereditary"      → similar_movies
-"Recommande un film de possession"   → search_horror_movies
+"Parle-moi de The Shining"               → query_movie_metadata
+"Films similaires à Hereditary"          → similar_movies
+"Recommande un film de possession"       → search_horror_movies
+"Quel âge a Halloween ?"                 → movie_age
+"Donne-moi des anecdotes sur Get Out"    → detailed_synopsis
+"Je survivrais dans Scream ?"            → survival_sim
 ```
+
+---
+
+## Le Juge (évaluateur de réponse)
+
+Après chaque réponse de l'agent, un second appel LLM — **Le Juge** — évalue la qualité de la réponse :
+
+- Détecte les hallucinations et incohérences avec les données réelles
+- Fournit un score de confiance (0.0 → 1.0)
+- Déclenche un **retry automatique** (max 2 fois) si la confiance est < 0.65
+
+Le verdict s'affiche en temps réel dans le **bandeau bas** de l'interface Streamlit :
+
+| Icône | Label | Condition |
+|-------|-------|-----------|
+| 🩸 | LE JUGE A APPROUVÉ | is_valid=True et confiance ≥ 80 % |
+| ⚠️ | LE JUGE EST MITIGÉ | is_valid=True et confiance < 80 % |
+| 💀 | LE JUGE CONDAMNE | is_valid=False |
 
 ---
 
@@ -146,10 +176,14 @@ curl -X POST "http://localhost:8000/chat" \
 Réponse :
 ```json
 {
-  "answer": "Titre : The Shining...\n--------\nUn classique de Kubrick...",
+  "answer": "Titre : The Shining (The Shining)\nAnnée : 1980\n...\n--------\nUn chef-d'œuvre de Kubrick...",
   "tools_used": ["query_movie_metadata", "groq-llm"],
-  "judge_verdict": null,
-  "conversation_id": "conv_default"
+  "judge_verdict": {
+    "is_valid": true,
+    "confidence": 0.95,
+    "reasoning": "Réponse cohérente avec les données de la base."
+  },
+  "conversation_id": "conv_anonymous"
 }
 ```
 
@@ -165,21 +199,24 @@ curl http://localhost:8000/info
 ```
 HorRAGorBot_Part_2/
 ├── frontend/
-│   ├── app.py                    # Interface Streamlit (thème horreur)
-│   └── .streamlit/config.toml   # Thème Dracula
+│   ├── app.py                         # Interface Streamlit (thème dark horror animé)
+│   └── .streamlit/config.toml         # Config Streamlit
 ├── tools/
 │   ├── __init__.py
-│   ├── query_movie_metadata.py   # Tool 1 — métadonnées SQL
-│   └── find_similar_horror_movies.py  # Tool 2 — similarité FAISS
+│   ├── query_movie_metadata.py        # Tool 1 — métadonnées SQL Supabase
+│   ├── find_similar_horror_movies.py  # Tool 2 — similarité FAISS + Supabase
+│   ├── calculate_movie_age.py         # Tool 4 — calcul âge film (date en FR)
+│   ├── scrape_detailed_synopsis.py    # Tool 5 — scraping Wikipedia
+│   └── horror_survival_simulator.py   # Tool 6 — simulation survie ludique
 ├── utils/
-│   └── build_faiss_index.py      # Construction de l'index FAISS
+│   └── build_faiss_index.py           # Construction de l'index FAISS
 ├── data/
-│   ├── faiss.index               # Index vectoriel (1179 films)
-│   └── id_map.npy                # Mapping index → ID film
-├── main_api.py                   # API FastAPI
-├── llm_groq.py                   # Client Groq + dispatch des tools
-├── .env.example                  # Template de configuration
-└── pyproject.toml                # Dépendances (uv)
+│   ├── faiss.index                    # Index vectoriel (1179 films)
+│   └── id_map.npy                     # Mapping index → ID film en base
+├── main_api.py                        # API FastAPI
+├── llm_groq.py                        # Client Groq + dispatch tools + Le Juge
+├── .env.example                       # Template de configuration
+└── pyproject.toml                     # Dépendances (uv)
 ```
 
 ---
@@ -191,8 +228,9 @@ HorRAGorBot_Part_2/
 | `GROQ_API_KEY non configurée` | Vérifie le fichier `.env` |
 | `SUPABASE_DB_URL non configurée` | Ajoute `SUPABASE_DB_URL` dans `.env` |
 | `ModuleNotFoundError` | Lance `uv sync` |
-| `Connection refused` | Vérifie que `py main_api.py` tourne |
+| `Connection refused` sur /chat | Vérifie que `uvicorn main_api:app` tourne |
 | HuggingFace télécharge le modèle | Normal au 1er lancement (~91 Mo, mis en cache ensuite) |
+| Index FAISS manquant | Lance `python utils/build_faiss_index.py` |
 
 ---
 
@@ -201,12 +239,12 @@ HorRAGorBot_Part_2/
 | Branche | Développeur |
 |---------|-------------|
 | `main` | Production |
-| `dev-tim` | Tim — Front-End + Tools |
-| `dev-nicolas` | Nicolas — FAISS + Tools |
-| `dev_julie` | Julie — API + Tools |
+| `dev-tim` | Tim — Front-End Streamlit |
+| `dev-nicolas` | Nicolas — FAISS + similarité |
+| `dev_julie` | Julie — API FastAPI + Tools |
 
 ---
 
 ## Partie 1
 
-Le pipeline de données (ingestion TMDB, Kaggle, IMDB, Rotten Tomatoes, PySpark) est documenté ici [old_README.md](<HorRAGor BOT Partie 1.pdf>)
+Le pipeline de données (ingestion TMDB, Kaggle, IMDB, Rotten Tomatoes, PySpark) est documenté dans [HorRAGor BOT Partie 1.pdf](HorRAGor%20BOT%20Partie%201.pdf) et dans [old_README.md](old_README.md).

@@ -181,8 +181,9 @@ Les zombies sont **manipulables à la souris** :
   - les **créneaux du château** (5 plateformes statiques),
   - la **lune**, autour de laquelle il marche en orbite, y compris tête en bas.
 
-> Le bandeau du Juge est placé sous le champ de saisie pour ne pas masquer
-> les zombies qui marchent au sol.
+> Les zombies marchent **au premier plan** (z-index élevé), devant le bandeau
+> d'input et le verdict du Juge, sans jamais bloquer la saisie
+> (couche `pointer-events:none`, sauf sur le corps d'un zombie pour le drag).
 
 ---
 
@@ -254,7 +255,8 @@ HorRAGorBot_Part_2/
 |--------|----------|
 | `GROQ_API_KEY non configurée` | Vérifie le fichier `.env` |
 | `SUPABASE_DB_URL et DATABASE_URL absentes` | Renseigne au moins `DATABASE_URL` dans `.env` |
-| L'agent répond "base inaccessible" / "aucun film trouvé" | Supabase est en pause (Free Tier après 7 j) — réactive le projet sur le dashboard Supabase |
+| L'agent répond "base inaccessible" | Supabase est en pause (Free Tier après 7 j) — réactive le projet sur le dashboard Supabase (voir logs API : `psycopg2.OperationalError`) |
+| L'agent répond "aucun film trouvé" alors que la base tourne | Vérifie le schéma Hub & Spoke : genres via `film_genre`/`genre`, notes via `evaluation` (voir logs API pour l'erreur SQL exacte) |
 | `ModuleNotFoundError` | Lance `uv sync` |
 | `Connection refused` sur /chat | Vérifie que `uvicorn main_api:app` tourne |
 | HuggingFace télécharge le modèle | Normal au 1er lancement (~91 Mo, mis en cache ensuite) |

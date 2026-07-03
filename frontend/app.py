@@ -246,7 +246,9 @@ def _inject_background() -> None:
   // ── Zombie interactive overlay (above UI, pointer-events passthrough) ───
   var zombieOverlay = doc.createElement('div');
   zombieOverlay.id = 'hg-zombie-layer';
-  zombieOverlay.style.cssText = 'position:fixed;inset:0;z-index:50;pointer-events:none;overflow:visible;';
+  // z-index très haut : passe devant le bandeau d'input Streamlit (stBottom)
+  // pour que les zombies marchent par-dessus au lieu d'être masqués.
+  zombieOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483000;pointer-events:none;overflow:visible;';
   doc.body.appendChild(zombieOverlay);
 
   // ── Zombies ────────────────────────────────────────────────────────────

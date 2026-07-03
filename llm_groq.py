@@ -74,17 +74,36 @@ def _fetch_films_from_db(film_ids: list[int]) -> list[dict]:
     try:
         conn = psycopg2.connect(db_url)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Genres via film_genre/genre, note TMDB via evaluation (Hub & Spoke)
             cur.execute(
-                "SELECT id, title, overview, genres, vote_average, release_date "
-                "FROM film WHERE id = ANY(%s)",
+                """
+                SELECT
+                    f.id,
+                    f.title,
+                    f.overview,
+                    f.release_date,
+                    ARRAY_AGG(DISTINCT g.name)
+                        FILTER (WHERE g.name IS NOT NULL)            AS genres,
+                    MAX(CASE WHEN e.source_name = 'TMDB'
+                        THEN e.score_value END)                      AS vote_average
+                FROM film f
+                LEFT JOIN film_genre fg ON f.id = fg.film_id
+                LEFT JOIN genre g       ON fg.genre_id = g.id
+                LEFT JOIN evaluation e  ON f.id = e.film_id
+                WHERE f.id = ANY(%s)
+                GROUP BY f.id, f.title, f.overview, f.release_date
+                """,
                 (film_ids,)
             )
             rows = cur.fetchall()
         conn.close()
         return [dict(r) for r in rows]
+    except psycopg2.OperationalError as e:
+        logger.error(f"Supabase inaccessible (connexion / base en pause ?) : {e}")
+        raise RuntimeError("Supabase inaccessible (base en pause ?)") from e
     except Exception as e:
-        logger.error(f"Erreur Supabase (DB pausée ou inaccessible) : {e}")
-        raise RuntimeError(f"Supabase inaccessible : {e}") from e
+        logger.error(f"Erreur requête Supabase : {e}")
+        raise
 
 
 # ---------------------------------------------------------------------------

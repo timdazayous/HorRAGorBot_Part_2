@@ -109,6 +109,11 @@ class ChatRequest(BaseModel):
         description="Identifiant conversation"
     )
 
+    history: list[dict] = Field(
+        default_factory=list,
+        description="Historique de la conversation (messages {role, content})"
+    )
+
 
 class ToolResult(BaseModel):
     """
@@ -252,7 +257,10 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 )
             )
 
-        result = await groq.generate_response(user_question=request.question)
+        result = await groq.generate_response(
+            user_question=request.question,
+            conversation_history=request.history
+        )
 
         logger.info(
             f"Réponse générée ({len(result.answer)} caractères) "

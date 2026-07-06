@@ -811,9 +811,15 @@ if prompt := st.chat_input("Murmure ton sort dans l'obscurité..."):
     with st.chat_message("assistant"):
         with st.spinner("HorRAGor réfléchit..."):
             try:
+                # Historique = messages précédents (hors question courante),
+                # limité aux 8 derniers pour maîtriser la taille du contexte.
+                history = [
+                    {"role": m["role"], "content": m["content"]}
+                    for m in st.session_state.messages[:-1]
+                ][-8:]
                 response = httpx.post(
                     API_URL,
-                    json={"question": prompt},
+                    json={"question": prompt, "history": history},
                     timeout=60.0,
                 )
                 response.raise_for_status()

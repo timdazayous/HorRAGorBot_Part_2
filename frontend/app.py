@@ -1,8 +1,25 @@
+import re
+
 import streamlit as st
 import streamlit.components.v1 as components
 import httpx
 
 API_URL = "http://localhost:8000/chat"
+
+
+def _sanitize_markdown(text: str) -> str:
+    """
+    Évite les « setext headings » : une ligne de tirets (ou de '=') collée
+    directement sous du texte transforme tout le bloc au-dessus en titre géant.
+    On insère une ligne vide avant, ce qui en fait une simple ligne horizontale.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    for line in lines:
+        if re.fullmatch(r"\s*[-=]{3,}\s*", line) and out and out[-1].strip():
+            out.append("")
+        out.append(line)
+    return "\n".join(out)
 
 # ── Moon ─────────────────────────────────────────────────────────────────────
 _MOON = """<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" width="180" height="180">
@@ -814,6 +831,7 @@ if prompt := st.chat_input("Murmure ton sort dans l'obscurité..."):
                 answer = f"Erreur inattendue : {e}"
                 st.session_state.last_verdict = None
 
+        answer = _sanitize_markdown(answer)
         st.markdown(answer)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
